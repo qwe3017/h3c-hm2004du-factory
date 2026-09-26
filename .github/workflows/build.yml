@@ -1,0 +1,82 @@
+name: Build H3C HM2004-DU Factory
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      # No Cargo.lock is committed, so --locked is intentionally not used.
+      - run: cargo build --release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: h3c-hm2004du-factory-windows-x86_64
+          path: target/release/h3c-hm2004du-factory.exe
+          if-no-files-found: error
+
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo build --release
+      - name: Package
+        run: tar -C target/release -czf h3c-hm2004du-factory-macos.tar.gz h3c-hm2004du-factory
+      - uses: actions/upload-artifact@v4
+        with:
+          name: h3c-hm2004du-factory-macos
+          path: h3c-hm2004du-factory-macos.tar.gz
+          if-no-files-found: error
+
+  linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      # Same minimal set as upstream: glow dlopens libGL, and rfd's Linux
+      # backend needs no GTK headers at build time.
+      - name: Install build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential libx11-dev libxkbcommon-dev pkg-config
+      - name: Build
+        # eframe default-features=false leaves Linux with NO windowing backend;
+        # linux-x11 (eframe/x11) supplies it, exactly like upstream CI.
+        run: cargo build --release --features linux-x11
+      - name: Package
+        run: |
+          cp target/release/h3c-hm2004du-factory h3c-hm2004du-factory-x86_64-linux
+          tar -czf h3c-hm2004du-factory-x86_64-linux.tar.gz h3c-hm2004du-factory-x86_64-linux
+      - uses: actions/upload-artifact@v4
+        with:
+          name: h3c-hm2004du-factory-linux-x86_64
+          path: h3c-hm2004du-factory-x86_64-linux.tar.gz
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: [windows, macos, linux]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: h3c-hm2004du-factory-*
+          path: release
+          merge-multiple: true
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          gh release create "$GITHUB_REF_NAME" release/* --generate-notes
+          --repo "$GITHUB_REPOSITORY"
