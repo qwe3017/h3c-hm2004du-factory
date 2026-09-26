@@ -89,6 +89,45 @@ def derive_mac(base, off):
     return bytes(m)
 
 
+# 厂商名（无数字、不代表芯片），识别型号时跳过
+VENDOR_TOKENS = ("ECONET",)
+
+
+def _take_token(run):
+    s = bytes(run).decode("ascii", "ignore").strip()
+    run.clear()
+    if len(s) < 4:
+        return None
+    has_alpha = any(c.isalpha() for c in s)
+    has_digit = any(c.isdigit() for c in s)
+    if has_alpha and has_digit and s.upper() not in VENDOR_TOKENS:
+        return s
+    return None
+
+
+def detect_pon_chip(cal):
+    """从校准 blob 识别 PON 前端芯片（硬件由导入数据决定）。
+
+    - FiberHome/APONCAL 风格：0x0c 处 u32 LE 芯片 ID（1=GN28L95, 2=UX3363）
+    - H3C 自有格式：blob 内填充的 ASCII 型号名（实测 0x1c0428 = "EN7572"）
+    - 两者都不是 -> None（未设置 / 未识别）
+    """
+    if not cal or all(b == 0xFF for b in cal):
+        return None
+    if cal[:8] == b"APONCAL\x00" and len(cal) >= 0x10:
+        cid = int.from_bytes(cal[0x0C:0x10], "little")
+        return {1: "GN28L95", 2: "UX3363"}.get(cid, "未知芯片 #%d" % cid)
+    run = bytearray()
+    for b in list(cal) + [0x0A]:
+        if 0x20 <= b < 0x7F:
+            run.append(b)
+        else:
+            t = _take_token(run)
+            if t:
+                return t
+    return None
+
+
 def encode(sn, label_mac, calibration=None, eeprom=None):
     img = bytearray(b"\xff" * DEMO_SIZE)
     img[MAGIC_OFFSET:MAGIC_OFFSET + 4] = MAGIC
@@ -289,6 +328,8 @@ def main():
             print("  pon0  +2  : %s" % mac_to_string(derive_mac(label, OFF_PON0)))
             print("  5G    +4  : %s" % mac_to_string(derive_mac(label, OFF_WIFI_5G)))
             print("  2.4G  +5  : %s" % mac_to_string(derive_mac(label, OFF_WIFI_24G)))
+        chip = detect_pon_chip(cal)
+        print("  PON 芯片   : %s" % (chip if chip else "<未识别/未设置>"))
         print("  calibration: %d 字节" % len(cal))
         print("  eeprom    : %d 字节" % len(eep))
     else:

@@ -43,9 +43,23 @@ HM2004-DU 的 factory 是一个 UBI 卷（`ubi-volume-factory`，2_359_296 字�
 ```bash
 cargo build --release
 cargo run --release
+
+# 也可以直接带文件启动（或把 .bin 拖到 exe 上）
+cargo run --release -- mtd14_reservearea.bin
 ```
 
-界面仿上游 FiberHome 编辑器：顶栏「新建 / 打开 / 保存 1 MiB / 保存真实布局」+ 状态行，「身份信息」区（标签 MAC / 设备序列号，各带随机按钮），派生 MAC 只读表，PON 校准与 Wi-Fi EEPROM 为「替换 / 导出 / 清空」分组行。
+仓库附带 `Cargo.lock`，锁定 egui / eframe **0.36.2**（本代码所针对的 API）。上游 `eframe` 0.35→0.36 有破坏性变更（`App::update` → `App::ui`、`Frame::group` → `ui.group`），升级依赖时请同步核对。
+
+Linux 构建需显式开启窗口后端（与上游一致）：
+
+```bash
+sudo apt-get install -y build-essential libx11-dev libxkbcommon-dev pkg-config
+cargo build --release --features linux-x11
+```
+
+ 界面仿上游 FiberHome 编辑器：顶栏「新建 / 打开 / 保存 1 MiB / 保存真实布局」+ 状态行，「身份信息」区（标签 MAC / 设备序列号，各带随机按钮），派生 MAC 只读表，PON 校准与 Wi-Fi EEPROM 为「替换 / 导出 / 清空」分组行。
+
+**PON 硬件由导入数据决定**：`PON 校准` 行的标题会显示从校准 blob 识别出的芯片——H3C 真机格式把型号以填充 ASCII 写在块内（实测 `0x1c0428` = `EN7572`，厂商 `ECONET` 因无数字被跳过）；若导入的是 FiberHome 的 `APONCAL` 格式则读 `0x0c` 芯片 ID（1=GN28L95、2=UX3363）；都识别不出时只显示「PON 校准」。这样换用其它光模块的备份会自动显示对应型号。
 
 ## Python 伴生工具（无需 Rust）
 
@@ -90,6 +104,7 @@ python3 h3c_factory_demo.py parse --bin mtd14_reservearea.bin
 ```
 h3c-hm2004du-factory/
 ├── Cargo.toml
+├── Cargo.lock                 # 锁定 egui/eframe 0.36.2
 ├── LICENSE                    # GPL-2.0-only
 ├── README.md
 ├── .gitignore

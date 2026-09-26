@@ -24,3 +24,5 @@ linux-x11 = ["eframe/x11"]
 [profile.release]
 lto = true
 codegen-units = 1
+# 与上游一致：去掉符号表，CI 产物体积更小。
+strip = "symbols"

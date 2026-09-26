@@ -31,7 +31,7 @@
 // Real ubi-volume-factory size.
 pub const FACTORY_VOLUME_SIZE: usize = 0x240000; // 2_359_296
 // Layout-mapped demo export size: highest used field rounded up to 4 KiB.
-pub const DEMO_SIZE: usize = 0x1c1000; // 1_843_200
+pub const DEMO_SIZE: usize = 0x1c1000; // 1_839_104 (校准区 0x1c0400+0x200 向上取整到 4 KiB)
 
 pub const MAGIC_OFFSET: usize = 0x140000;
 pub const MAGIC: [u8; 4] = [0x21, 0x43, 0x34, 0x12];
@@ -237,6 +237,64 @@ pub fn derive_mac(base: &[u8; 6], off: u8) -> [u8; 6] {
     let mut m = *base;
     m[5] = m[5].wrapping_add(off);
     m
+}
+
+/// Identify the PON frontend chip from the calibration blob, so the hardware
+/// shown in the UI comes from the imported data instead of being hardcoded.
+///
+/// Two formats are recognised:
+///   * FiberHome-style `APONCAL` header: numeric chip id at 0x0c
+///     (1 = GN28L95, 2 = UX3363), the same mapping used upstream.
+///   * H3C reservearea: the chip name sits in the calibration block as padded
+///     ASCII — measured on a real HM2004-DU the 0x1c0400 region holds
+///     "ECONET" at +0x14 and "EN7572" at +0x28.
+///
+/// `None` means the blob is blank or carries no recognisable part number.
+pub fn detect_pon_chip(cal: &[u8]) -> Option<String> {
+    if cal.is_empty() || cal.iter().all(|&b| b == 0xff) {
+        return None;
+    }
+    if cal.starts_with(b"APONCAL\0") && cal.len() >= 0x10 {
+        let id = u32::from_le_bytes([cal[0x0c], cal[0x0d], cal[0x0e], cal[0x0f]]);
+        return Some(match id {
+            1 => "GN28L95".to_string(),
+            2 => "UX3363".to_string(),
+            _ => format!("未知芯片 #{id}"),
+        });
+    }
+    extract_chip_token(cal)
+}
+
+/// Vendor strings carry no part number; skip them when looking for the chip.
+const VENDOR_TOKENS: &[&str] = &["ECONET"];
+
+fn take_token(run: &mut Vec<u8>) -> Option<String> {
+    let s = String::from_utf8_lossy(run).trim().to_string();
+    run.clear();
+    if s.len() < 4 {
+        return None;
+    }
+    let alpha = s.chars().any(|c| c.is_ascii_alphabetic());
+    let digit = s.chars().any(|c| c.is_ascii_digit());
+    if alpha && digit && !VENDOR_TOKENS.iter().any(|v| s.eq_ignore_ascii_case(v)) {
+        Some(s)
+    } else {
+        None
+    }
+}
+
+/// First printable ASCII run that looks like a part number (letters + digits),
+/// so unknown hardware is reported rather than mislabelled.
+fn extract_chip_token(cal: &[u8]) -> Option<String> {
+    let mut run: Vec<u8> = Vec::new();
+    for &b in cal.iter().chain(std::iter::once(&b'\n')) {
+        if (0x20..0x7f).contains(&b) {
+            run.push(b);
+        } else if let Some(t) = take_token(&mut run) {
+            return Some(t);
+        }
+    }
+    None
 }
 
 /// Locally-administered, unicast random MAC.

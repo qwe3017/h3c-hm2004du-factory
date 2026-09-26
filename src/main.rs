@@ -19,9 +19,10 @@ mod model;
 use eframe::egui;
 use model::{
     Factory, CALIBRATION_SIZE, OFF_ETH0, OFF_PON0, OFF_WIFI_24G, OFF_WIFI_5G, WIFI_EEPROM_SIZE,
-    derive_mac, mac_to_string, parse_mac, random_mac, random_sn,
+    derive_mac, detect_pon_chip, mac_to_string, parse_mac, random_mac, random_sn,
 };
 use rfd::FileDialog;
+use std::path::Path;
 
 struct Editor {
     factory: Factory,
@@ -138,9 +139,14 @@ impl eframe::App for Editor {
 
         // ---- 数据区 ----
         ui.add_space(8.0);
+        // The chip is named by the imported calibration, not hardcoded.
+        let pon_title = match detect_pon_chip(&self.factory.calibration) {
+            Some(chip) => format!("PON 校准 ({chip})"),
+            None => "PON 校准".to_string(),
+        };
         blob_section(
             ui,
-            "PON 校准 (EN7572/UX3326)",
+            &pon_title,
             &mut self.factory.calibration,
             CALIBRATION_SIZE,
             &mut self.msg,
@@ -234,6 +240,18 @@ fn main() -> eframe::Result {
                 msg: "新建 Factory".to_string(),
             };
             ed.sync_from_factory();
+            // Like upstream: allow `h3c-hm2004du-factory.exe backup.bin`
+            // (or dragging a .bin onto the exe) to open a file directly.
+            if let Some(path) = std::env::args_os().nth(1) {
+                match std::fs::read(&path) {
+                    Ok(bytes) => {
+                        ed.factory = import::parse_factory_volume(&bytes);
+                        ed.sync_from_factory();
+                        ed.msg = format!("已打开: {}", Path::new(&path).display());
+                    }
+                    Err(e) => ed.msg = format!("读取失败: {e}"),
+                }
+            }
             Ok(Box::new(ed))
         }),
     )
