@@ -2,14 +2,19 @@
 name = "h3c-hm2004du-factory"
 version = "0.1.0"
 edition = "2021"
-description = "H3C HM2004-DU factory partition editor — a Rust/egui port of fiberhome-factory, retargeted to the AN7581 FTTR gateway."
+license = "GPL-2.0-only"
+description = "H3C HM2004-DU factory partition editor - a Rust/egui port of fiberhome-factory, retargeted to the AN7581 FTTR gateway."
 
+# This crate is a derivative of `fiberhome-factory` (GPL-2.0-only) and therefore
+# ships under the same licence. See the "许可证" section of README.md.
 [dependencies]
-eframe = "0.36"
-rfd = "0.17"
-flate2 = "1"
+eframe = { version = "0.36.1", default-features = false, features = ["default_fonts", "glow"] }
+rfd = "0.17.2"
+fontdb = "0.23"
 getrandom = "0.3"
+flate2 = "1"
+ttf-parser = "0.25"
 
 [profile.release]
-opt-level = 2
 lto = true
+codegen-units = 1

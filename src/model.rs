@@ -182,18 +182,20 @@ pub fn derive_mac(base: &[u8; 6], off: u8) -> [u8; 6] {
     m
 }
 
-/// Locally-administered, unicast random MAC (mirrors the original random_mac).
+/// Locally-administered, unicast random MAC.
 pub fn random_mac() -> [u8; 6] {
     let mut m = [0u8; 6];
-    let _ = getrandom::getrandom(&mut m);
-    m[0] |= 0x02; // locally administered
-    m[0] &= 0xfe; // not multicast
+    // getrandom 0.3 exposes `fill`, not `getrandom`.
+    let _ = getrandom::fill(&mut m);
+    // Set the locally administered bit and clear the multicast bit.
+    m[0] = (m[0] & 0xfc) | 0x02;
     m
 }
 
-/// `H3C` + 8 random uppercase hex (12 chars, matches the SN field length).
+/// `H3CT` + 8 random uppercase hex = 12 chars, exactly matching DEVICE_SN_SIZE
+/// and the real device serial format (`H3CT0005EBF0`).
 fn random_sn() -> String {
     let mut b = [0u8; 4];
-    let _ = getrandom::getrandom(&mut b);
-    format!("H3C{:08X}", u32::from_be_bytes(b))
+    let _ = getrandom::fill(&mut b);
+    format!("H3CT{:08X}", u32::from_be_bytes(b))
 }
