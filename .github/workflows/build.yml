@@ -1,24 +1,9 @@
 name: Build H3C HM2004-DU Factory
 
-"on":
+on:
   push:
-分支:
-      - main
-      - master
-标签:
-      - "v*"
   pull_request:
   workflow_dispatch:
-    inputs:
-      tag:
-        description: 发布用的 tag，例如 v0.1.0
-        required: false
-        default: nightly
-      prerelease:
-        description: 标记为预发布版本
-        type: boolean
-        required: false
-        default: true
 
 permissions:
   contents: read
@@ -62,8 +47,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      # Same minimal set as upstream: glow dlopens libGL, and rfd's Linux
-      # backend needs no GTK headers at build time.
+      # glow dlopens libGL; rfd's Linux backend needs no GTK headers at build time.
       - name: Install build tools
         run: |
           sudo apt-get update
@@ -90,8 +74,8 @@ jobs:
       - macos
       - linux
     runs-on: ubuntu-24.04
-    # 只有打 tag 推送或手动触发才发版；普通 push 与 PR 仅构建
-    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+    # 仅在推送 v* tag 或手动触发时发版；普通 push 与 PR 只构建
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
     permissions:
       contents: write
     steps:
@@ -107,10 +91,9 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          # 手动触发时用输入的 tag（不存在会自动创建），tag 推送时用 github.ref_name
-          tag_name: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
-          name: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
-          prerelease: ${{ github.event_name == 'workflow_dispatch' && inputs.prerelease || false }}
+          tag_name: ${{ github.event_name == 'workflow_dispatch' && 'nightly' || github.ref_name }}
+          name: ${{ github.event_name == 'workflow_dispatch' && 'nightly' || github.ref_name }}
+          prerelease: ${{ github.event_name == 'workflow_dispatch' }}
           generate_release_notes: true
           overwrite_files: true
           files: |
