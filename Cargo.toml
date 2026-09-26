@@ -1,0 +1,15 @@
+[package]
+name = "h3c-hm2004du-factory"
+version = "0.1.0"
+edition = "2021"
+description = "H3C HM2004-DU factory partition editor — a Rust/egui port of fiberhome-factory, retargeted to the AN7581 FTTR gateway."
+
+[dependencies]
+eframe = "0.36"
+rfd = "0.17"
+flate2 = "1"
+getrandom = "0.3"
+
+[profile.release]
+opt-level = 2
+lto = true
