@@ -251,7 +251,7 @@ pub fn random_mac() -> [u8; 6] {
 
 /// `H3CT` + 8 random uppercase hex = 12 chars, exactly matching DEVICE_SN_SIZE
 /// and the real device serial format (`H3CT0005EBF0`).
-fn random_sn() -> String {
+pub fn random_sn() -> String {
     let mut b = [0u8; 4];
     let _ = getrandom::fill(&mut b);
     format!("H3CT{:08X}", u32::from_be_bytes(b))

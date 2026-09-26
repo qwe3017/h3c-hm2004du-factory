@@ -45,7 +45,7 @@ cargo build --release
 cargo run --release
 ```
 
-界面：编辑 Device SN / label MAC → 实时显示派生 MAC → 载入校准 / EEPROM bin → 导入真实 factory 卷 → 保存 1MiB 紧凑镜像或真实布局镜像。
+界面仿上游 FiberHome 编辑器：顶栏「新建 / 打开 / 保存 1 MiB / 保存真实布局」+ 状态行，「身份信息」区（标签 MAC / 设备序列号，各带随机按钮），派生 MAC 只读表，PON 校准与 Wi-Fi EEPROM 为「替换 / 导出 / 清空」分组行。
 
 ## Python 伴生工具（无需 Rust）
 
