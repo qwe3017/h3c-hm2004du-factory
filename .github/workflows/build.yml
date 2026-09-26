@@ -2,11 +2,27 @@ name: Build H3C HM2004-DU Factory
 
 on:
   push:
+分支: [main, master]
+标签: ['v*']
   pull_request:
   workflow_dispatch:
+    inputs:
+      tag:
+        description: '发布用的 tag，例如 v0.1.0'
+        required: false
+        default: 'nightly'
+      prerelease:
+        description: '标记为预发布版本'
+        type: boolean
+        required: false
+        default: true
 
 permissions:
   contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   windows:
@@ -14,7 +30,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      # No Cargo.lock is committed, so --locked is intentionally not used.
       - run: cargo build --release
       - uses: actions/upload-artifact@v4
         with:
@@ -41,16 +56,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      # Same minimal set as upstream: glow dlopens libGL, and rfd's Linux
-      # backend needs no GTK headers at build time.
       - name: Install build tools
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             build-essential libx11-dev libxkbcommon-dev pkg-config
       - name: Build
-        # eframe default-features=false leaves Linux with NO windowing backend;
-        # linux-x11 (eframe/x11) supplies it, exactly like upstream CI.
         run: cargo build --release --features linux-x11
       - name: Package
         run: |
@@ -61,3 +72,32 @@ jobs:
           name: h3c-hm2004du-factory-linux-x86_64
           path: h3c-hm2004du-factory-x86_64-linux.tar.gz
           if-no-files-found: error
+
+  release:
+    name: Publish Release
+    needs: [windows, macos, linux]
+    runs-on: ubuntu-24.04
+    # 只有打 tag 推送或手动触发才发版；pull_request / 普通 push 仅构建
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+    permissions:
+      contents: write
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Show files
+        run: ls -l dist
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          # 手动触发时用输入的 tag（不存在会自动创建），tag 推送时用 github.ref_name
+          tag_name: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+          name: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+          prerelease: ${{ github.event_name == 'workflow_dispatch' && inputs.prerelease || false }}
+          generate_release_notes: true
+          files: |
+            dist/**
