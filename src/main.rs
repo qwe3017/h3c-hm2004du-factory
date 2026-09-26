@@ -174,7 +174,7 @@ fn blob_section(
     } else {
         "未设置".to_string()
     };
-    egui::Frame::group(ui).show(ui, |ui| {
+    ui.group(|ui| {
         ui.set_min_width(ui.available_width());
         ui.horizontal(|ui| {
             ui.strong(title);
