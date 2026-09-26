@@ -1,18 +1,21 @@
 name: Build H3C HM2004-DU Factory
 
-on:
+"on":
   push:
-分支: [main, master]
-标签: ['v*']
+分支:
+      - main
+      - master
+标签:
+      - "v*"
   pull_request:
   workflow_dispatch:
     inputs:
       tag:
-        description: '发布用的 tag，例如 v0.1.0'
+        description: 发布用的 tag，例如 v0.1.0
         required: false
-        default: 'nightly'
+        default: nightly
       prerelease:
-        description: '标记为预发布版本'
+        description: 标记为预发布版本
         type: boolean
         required: false
         default: true
@@ -82,7 +85,10 @@ jobs:
 
   release:
     name: Publish Release
-    needs: [windows, macos, linux]
+    needs:
+      - windows
+      - macos
+      - linux
     runs-on: ubuntu-24.04
     # 只有打 tag 推送或手动触发才发版；普通 push 与 PR 仅构建
     if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
