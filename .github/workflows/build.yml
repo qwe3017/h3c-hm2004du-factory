@@ -30,11 +30,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+      # No Cargo.lock is committed, so --locked is intentionally not used.
       - run: cargo build --release
+      - name: Package
+        run: Compress-Archive -Path target/release/h3c-hm2004du-factory.exe -DestinationPath h3c-hm2004du-factory-windows-x86_64.zip
       - uses: actions/upload-artifact@v4
         with:
           name: h3c-hm2004du-factory-windows-x86_64
-          path: target/release/h3c-hm2004du-factory.exe
+          path: h3c-hm2004du-factory-windows-x86_64.zip
           if-no-files-found: error
 
   macos:
@@ -56,12 +59,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+      # Same minimal set as upstream: glow dlopens libGL, and rfd's Linux
+      # backend needs no GTK headers at build time.
       - name: Install build tools
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             build-essential libx11-dev libxkbcommon-dev pkg-config
       - name: Build
+        # eframe default-features=false leaves Linux with NO windowing backend;
+        # linux-x11 (eframe/x11) supplies it, exactly like upstream CI.
         run: cargo build --release --features linux-x11
       - name: Package
         run: |
@@ -77,7 +84,7 @@ jobs:
     name: Publish Release
     needs: [windows, macos, linux]
     runs-on: ubuntu-24.04
-    # 只有打 tag 推送或手动触发才发版；pull_request / 普通 push 仅构建
+    # 只有打 tag 推送或手动触发才发版；普通 push 与 PR 仅构建
     if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
     permissions:
       contents: write
@@ -89,7 +96,7 @@ jobs:
           merge-multiple: true
 
       - name: Show files
-        run: ls -l dist
+        run: ls -lh dist
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -99,5 +106,6 @@ jobs:
           name: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
           prerelease: ${{ github.event_name == 'workflow_dispatch' && inputs.prerelease || false }}
           generate_release_notes: true
+          overwrite_files: true
           files: |
             dist/**
