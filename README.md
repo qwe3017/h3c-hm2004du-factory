@@ -61,15 +61,20 @@ python3 h3c_factory_demo.py parse --bin mtd14_reservearea.bin
 
 示例产物见 [`examples/factory-h3c-demo.bin`](examples/factory-h3c-demo.bin)。
 
+> 导出镜像固定为 **1,839,104 字节**（`0x1c1000`，≈1.75 MiB），这是容纳真实字段的最小尺寸。
+> **无法压缩到 1 MiB**：H3C 的身份字段（魔数 / SN / base-MAC @ `0x140000+`、PON 校准 @ `0x1c0400`）全部落在 1 MiB 之后，硬截断会丢失 SN、MAC、魔数与校准。
+
 ## 目录结构
 
 ```
 h3c-hm2004du-factory/
 ├── Cargo.toml
-├── LICENSE
+├── LICENSE                    # GPL-2.0-only
 ├── README.md
 ├── .gitignore
+├── .github/workflows/build.yml # GitHub Actions：三平台构建 + tag 自动发 Release
 ├── src/
+│   ├── font.rs      # CJK 字体安装（fontdb，移植自上游）
 │   ├── main.rs      # egui 编辑器
 │   ├── model.rs     # H3C 布局常量 + Factory + encode
 │   └── import.rs    # 解析真实 factory 卷
@@ -90,4 +95,10 @@ h3c-hm2004du-factory/
 
 ## 许可证
 
-[MIT](LICENSE)。本项目为 `fiberhome-factory` 的 H3C 改写 / 重实现，感谢原项目的布局思路。
+**[GPL-2.0-only](LICENSE)**。
+
+本项目是上游 `fiberhome-factory` 项目的 **H3C 改写 / 重实现**：整体架构与出厂分区编辑思路借鉴自上游，`src/font.rs` 的 CJK 字体安装逻辑直接移植自上游 `font.rs`。上游以 **GPL-2.0-only** 发布，故本派生作品沿用同一许可证。
+
+若需改用其他许可证（如 MIT），请先移除所有源自上游的代码。
+
+感谢原作者的工作。

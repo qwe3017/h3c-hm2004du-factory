@@ -15,6 +15,12 @@ getrandom = "0.3"
 flate2 = "1"
 ttf-parser = "0.25"
 
+[features]
+# eframe default-features=false leaves Linux with no windowing backend; this
+# optional feature enables eframe/x11. Upstream uses the same trick and its CI
+# passes --features linux-x11 on the Linux job.
+linux-x11 = ["eframe/x11"]
+
 [profile.release]
 lto = true
 codegen-units = 1

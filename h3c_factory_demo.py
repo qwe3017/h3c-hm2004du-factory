@@ -114,19 +114,43 @@ def _find_al_mac(buf):
         from_ = at
 
 
+def read_almac_bytes(data):
+    """AL-MAC 区内容：真实备份为 gzip ctromfile(解压后)，演示镜像为明文原文。
+
+    用 decompressobj 而非 zlib.decompress：前者在 gzip 成员结束处停下，
+    不会因为成员后紧随的 0xff 填充而报错。
+    """
+    if len(data) <= ALMAC_REGION_OFFSET:
+        return None
+    region = data[ALMAC_REGION_OFFSET:]
+    idx = region.find(b"\x1f\x8b\x08")
+    if idx >= 0:
+        d = zlib.decompressobj(16 + zlib.MAX_WBITS)
+        try:
+            out = d.decompress(region[idx:]) + d.flush()
+        except Exception:
+            out = b""
+        if out:
+            return out
+    return region
+
+
+def _find_serial_number(buf):
+    tag = b'SerialNumber="'
+    i = buf.find(tag)
+    if i < 0:
+        return None
+    at = i + len(tag)
+    j = buf.find(b'"', at)
+    if j < 0 or j == at:
+        return None
+    return buf[at:j].decode("utf-8", "ignore")
+
+
 def read_label_mac(data):
-    if len(data) > ALMAC_REGION_OFFSET:
-        region = data[ALMAC_REGION_OFFSET:]
-        start = region.find(b"\x1f\x8b\x08")
-        if start >= 0:
-            try:
-                out = zlib.decompress(region[start:], 16 + 15)  # raw/gzip autodetect
-                m = _find_al_mac(out)
-                if m:
-                    return m
-            except Exception:
-                pass
-        m = _find_al_mac(region)
+    text = read_almac_bytes(data)
+    if text:
+        m = _find_al_mac(text)
         if m:
             return m
     if len(data) >= BASE_MAC_OFFSET + 6:
@@ -142,6 +166,13 @@ def parse_volume(data):
         sn = data[DEVICE_SN_OFFSET:DEVICE_SN_OFFSET + DEVICE_SN_SIZE].decode(
             "utf-8", "ignore"
         ).strip("\x00 ").strip()
+    # 0x14102c 槽位可能为空，回退到 ctromfile 里的 SerialNumber
+    if not sn:
+        text = read_almac_bytes(data)
+        if text:
+            found = _find_serial_number(text)
+            if found:
+                sn = found
     label = read_label_mac(data)
     cal = data[CALIBRATION_OFFSET:CALIBRATION_OFFSET + CALIBRATION_SIZE] if len(data) >= CALIBRATION_OFFSET + CALIBRATION_SIZE else b""
     eep = data[WIFI_EEPROM_OFFSET:WIFI_EEPROM_OFFSET + WIFI_EEPROM_SIZE] if len(data) >= WIFI_EEPROM_OFFSET + WIFI_EEPROM_SIZE else b""
@@ -167,6 +198,11 @@ def main():
         mac = parse_mac(args.mac)
         if not mac:
             sys.exit("MAC 无效: %s" % args.mac)
+        if len(args.sn) != DEVICE_SN_SIZE:
+            print(
+                "警告: SN 长度 %d != %d, 高位将被截断"
+                % (len(args.sn), DEVICE_SN_SIZE)
+            )
         cal = open(args.cal, "rb").read() if args.cal else None
         eep = open(args.eeprom, "rb").read() if args.eeprom else None
         img = encode(args.sn, mac, cal, eep)
