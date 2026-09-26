@@ -93,7 +93,7 @@ h3c-hm2004du-factory/
 ├── LICENSE                    # GPL-2.0-only
 ├── README.md
 ├── .gitignore
-├── .github/workflows/build.yml # GitHub Actions：三平台构建 + tag 自动发 Release
+├── .github/workflows/build.yml # GitHub Actions：三平台构建（产物见 Actions Artifacts）
 ├── src/
 │   ├── font.rs      # CJK 字体安装（fontdb，移植自上游）
 │   ├── main.rs      # egui 编辑器
