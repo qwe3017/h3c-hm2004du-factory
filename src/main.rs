@@ -52,7 +52,7 @@ impl eframe::App for Editor {
                 "布局映射(演示/对照)：SN@0x14102c, magic@0x140000, AL-MAC(明文)@0x80000, \
                  校准@0x1c0400, EEPROM@0x4c000",
             );
-            ui.label("注：导出为布局镜像，不含 UBI 元数据、不重压缩 ctromfile，不可直接刷写 NAND。");
+            ui.label("注：导出为演示镜像（1MiB 紧凑 / 真实偏移两种布局），不含 UBI 元数据，不可直接刷写 NAND。");
 
             ui.separator();
             ui.label("设备序列号 (Device SN, 12 字节 ASCII):");
@@ -122,11 +122,26 @@ impl eframe::App for Editor {
                     self.sync_from_factory();
                     self.msg = "已随机生成".into();
                 }
-                if ui.button("保存布局镜像…").clicked() {
+                if ui.button("保存 1MiB 镜像…").clicked() {
+                    self.apply_to_factory();
+                    let img = self.factory.encode_1mib();
+                    if let Some(p) = FileDialog::new()
+                        .set_file_name("factory-h3c-1mib.bin")
+                        .save_file()
+                    {
+                        match std::fs::write(&p, &img) {
+                            Ok(_) => {
+                                self.msg = format!("已保存 {} 字节 -> {}", img.len(), p.display());
+                            }
+                            Err(e) => self.msg = format!("保存失败: {e}"),
+                        }
+                    }
+                }
+                if ui.button("保存真实布局镜像…").clicked() {
                     self.apply_to_factory();
                     let img = self.factory.encode();
                     if let Some(p) = FileDialog::new()
-                        .set_file_name("factory-h3c.bin")
+                        .set_file_name("factory-h3c-layout.bin")
                         .save_file()
                     {
                         match std::fs::write(&p, &img) {

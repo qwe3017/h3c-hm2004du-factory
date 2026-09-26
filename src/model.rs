@@ -52,6 +52,24 @@ pub const CALIBRATION_SIZE: usize = 0x200;
 pub const WIFI_EEPROM_OFFSET: usize = 0x4c000;
 pub const WIFI_EEPROM_SIZE: usize = 0x1000;
 
+// ---- 1 MiB compact layout (self-describing, NOT flashable) ----
+//
+// The real H3C identity fields sit at 0x140000+, i.e. beyond 1 MiB, so a
+// 1 MiB file cannot keep the true offsets. This layout packs every field
+// into the first 1 MiB at fixed, documented offsets. Parsing auto-detects
+// it via the ASCII magic.
+pub const COMPACT_SIZE: usize = 0x100000; // 1_048_576
+pub const COMPACT_MAGIC: [u8; 8] = *b"H3C-1MiB";
+
+pub const C_LABEL_MAC_OFFSET: usize = 0x0010; // label / br-lan / LAN
+pub const C_ETH0_MAC_OFFSET: usize = 0x0020; // label+1
+pub const C_PON0_MAC_OFFSET: usize = 0x0030; // label+2 (pon0/wan)
+pub const C_WIFI5G_MAC_OFFSET: usize = 0x0040; // label+4
+pub const C_WIFI24_MAC_OFFSET: usize = 0x0050; // label+5
+pub const C_DEVICE_SN_OFFSET: usize = 0x0060; // 12-byte ASCII
+pub const C_WIFI_EEPROM_OFFSET: usize = 0x1000; // 0x1000, MT7916
+pub const C_CALIBRATION_OFFSET: usize = 0x2000; // 0x200, EN7572
+
 // MAC derivation offsets (applied to the last byte only).
 pub const OFF_ETH0: u8 = 1;
 pub const OFF_PON0: u8 = 2;
@@ -117,6 +135,45 @@ impl Factory {
         let en = self.wifi_eeprom.len().min(WIFI_EEPROM_SIZE);
         if en > 0 {
             img[WIFI_EEPROM_OFFSET..WIFI_EEPROM_OFFSET + en].copy_from_slice(&self.wifi_eeprom[..en]);
+        }
+
+        img
+    }
+
+    /// 1 MiB compact image: every field packed at fixed documented offsets so
+    /// the whole bundle fits into 1 MiB. Carries the label MAC plus all four
+    /// derived addresses (eth0=+1, pon0=+2, 5G=+4, 2.4G=+5), Device SN,
+    /// Wi-Fi EEPROM and PON calibration. NOT flashable.
+    pub fn encode_1mib(&self) -> Vec<u8> {
+        let mut img: Vec<u8> = vec![0xff; COMPACT_SIZE];
+        img[0..COMPACT_MAGIC.len()].copy_from_slice(&COMPACT_MAGIC);
+
+        let (e0, p0, w5, w24) = self.derive_macs();
+        for (off, mac) in [
+            (C_LABEL_MAC_OFFSET, &self.label_mac),
+            (C_ETH0_MAC_OFFSET, &e0),
+            (C_PON0_MAC_OFFSET, &p0),
+            (C_WIFI5G_MAC_OFFSET, &w5),
+            (C_WIFI24_MAC_OFFSET, &w24),
+        ] {
+            img[off..off + 6].copy_from_slice(mac);
+        }
+
+        let sn = self.device_sn.as_bytes();
+        let n = sn.len().min(DEVICE_SN_SIZE);
+        if n > 0 {
+            img[C_DEVICE_SN_OFFSET..C_DEVICE_SN_OFFSET + n].copy_from_slice(&sn[..n]);
+        }
+
+        let en = self.wifi_eeprom.len().min(WIFI_EEPROM_SIZE);
+        if en > 0 {
+            img[C_WIFI_EEPROM_OFFSET..C_WIFI_EEPROM_OFFSET + en]
+                .copy_from_slice(&self.wifi_eeprom[..en]);
+        }
+        let cn = self.calibration.len().min(CALIBRATION_SIZE);
+        if cn > 0 {
+            img[C_CALIBRATION_OFFSET..C_CALIBRATION_OFFSET + cn]
+                .copy_from_slice(&self.calibration[..cn]);
         }
 
         img

@@ -39,6 +39,19 @@ CALIBRATION_SIZE = 0x200
 WIFI_EEPROM_OFFSET = 0x4C000
 WIFI_EEPROM_SIZE = 0x1000
 
+# 1MiB 紧凑布局（自描述，不可刷写）：真实 H3C 身份字段在 0x140000+（超 1MiB），
+# 故按文档化偏移重排，magic "H3C-1MiB" 用于解析时自动识别。
+COMPACT_SIZE = 0x100000
+COMPACT_MAGIC = b"H3C-1MiB"
+C_LABEL_MAC_OFFSET = 0x0010
+C_ETH0_MAC_OFFSET = 0x0020
+C_PON0_MAC_OFFSET = 0x0030
+C_WIFI5G_MAC_OFFSET = 0x0040
+C_WIFI24_MAC_OFFSET = 0x0050
+C_DEVICE_SN_OFFSET = 0x0060
+C_WIFI_EEPROM_OFFSET = 0x1000
+C_CALIBRATION_OFFSET = 0x2000
+
 # MAC 派生偏移 (末字节)
 OFF_ETH0, OFF_PON0, OFF_WIFI_5G, OFF_WIFI_24G = 1, 2, 4, 5
 
@@ -93,6 +106,27 @@ def encode(sn, label_mac, calibration=None, eeprom=None):
         img[CALIBRATION_OFFSET:CALIBRATION_OFFSET + len(calibration)] = calibration
     if eeprom:
         img[WIFI_EEPROM_OFFSET:WIFI_EEPROM_OFFSET + len(eeprom)] = eeprom
+    return bytes(img)
+
+
+def encode_1mib(sn, label_mac, calibration=None, eeprom=None):
+    """1MiB 紧凑镜像：全部字段按文档化偏移重排进 1MiB，含 5 条 MAC 表。"""
+    img = bytearray(b"\xff" * COMPACT_SIZE)
+    img[0:len(COMPACT_MAGIC)] = COMPACT_MAGIC
+    for off, mac in (
+        (C_LABEL_MAC_OFFSET, label_mac),
+        (C_ETH0_MAC_OFFSET, derive_mac(label_mac, OFF_ETH0)),
+        (C_PON0_MAC_OFFSET, derive_mac(label_mac, OFF_PON0)),
+        (C_WIFI5G_MAC_OFFSET, derive_mac(label_mac, OFF_WIFI_5G)),
+        (C_WIFI24_MAC_OFFSET, derive_mac(label_mac, OFF_WIFI_24G)),
+    ):
+        img[off:off + 6] = mac
+    snb = sn.encode("ascii")[:DEVICE_SN_SIZE]
+    img[C_DEVICE_SN_OFFSET:C_DEVICE_SN_OFFSET + len(snb)] = snb
+    if eeprom:
+        img[C_WIFI_EEPROM_OFFSET:C_WIFI_EEPROM_OFFSET + len(eeprom)] = eeprom
+    if calibration:
+        img[C_CALIBRATION_OFFSET:C_CALIBRATION_OFFSET + len(calibration)] = calibration
     return bytes(img)
 
 
@@ -160,7 +194,24 @@ def read_label_mac(data):
     return None
 
 
+def parse_compact(data):
+    """解析 encode_1mib 生成的 1MiB 紧凑镜像。"""
+    label = data[C_LABEL_MAC_OFFSET:C_LABEL_MAC_OFFSET + 6]
+    label = bytes(label) if any(b != 0xFF for b in label) else None
+    sn = ""
+    if len(data) >= C_DEVICE_SN_OFFSET + DEVICE_SN_SIZE:
+        sn = data[C_DEVICE_SN_OFFSET:C_DEVICE_SN_OFFSET + DEVICE_SN_SIZE].decode(
+            "utf-8", "ignore"
+        ).strip("\x00 ").strip()
+    cal = data[C_CALIBRATION_OFFSET:C_CALIBRATION_OFFSET + CALIBRATION_SIZE]
+    eep = data[C_WIFI_EEPROM_OFFSET:C_WIFI_EEPROM_OFFSET + WIFI_EEPROM_SIZE]
+    return sn, label, cal, eep
+
+
 def parse_volume(data):
+    # 1MiB 紧凑镜像自动识别
+    if data[:8] == COMPACT_MAGIC:
+        return parse_compact(data)
     sn = ""
     if len(data) >= DEVICE_SN_OFFSET + DEVICE_SN_SIZE:
         sn = data[DEVICE_SN_OFFSET:DEVICE_SN_OFFSET + DEVICE_SN_SIZE].decode(
@@ -183,12 +234,18 @@ def main():
     ap = argparse.ArgumentParser(description="H3C HM2004-DU factory 工具")
     sub = ap.add_subparsers(dest="cmd")
 
-    g = sub.add_parser("gen", help="生成布局映射演示镜像")
+    g = sub.add_parser("gen", help="生成演示镜像 (1mib 紧凑 / true 真实布局)")
     g.add_argument("--sn", required=True)
     g.add_argument("--mac", required=True)
     g.add_argument("--cal", help="校准 bin (可选)")
     g.add_argument("--eeprom", help="EEPROM bin (可选)")
-    g.add_argument("-o", "--out", default="factory-h3c-demo.bin")
+    g.add_argument(
+        "--layout",
+        choices=["1mib", "true"],
+        default="1mib",
+        help="1mib=1MiB 紧凑镜像(默认), true=真实 H3C 偏移布局(~1.75MiB)",
+    )
+    g.add_argument("-o", "--out", default="factory-h3c-1mib.bin")
 
     p = sub.add_parser("parse", help="解析真实 reservearea 备份")
     p.add_argument("--bin", required=True)
@@ -205,7 +262,10 @@ def main():
             )
         cal = open(args.cal, "rb").read() if args.cal else None
         eep = open(args.eeprom, "rb").read() if args.eeprom else None
-        img = encode(args.sn, mac, cal, eep)
+        if args.layout == "1mib":
+            img = encode_1mib(args.sn, mac, cal, eep)
+        else:
+            img = encode(args.sn, mac, cal, eep)
         open(args.out, "wb").write(img)
         e0 = derive_mac(mac, OFF_ETH0)
         p0 = derive_mac(mac, OFF_PON0)

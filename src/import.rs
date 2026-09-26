@@ -10,7 +10,12 @@ use crate::model::*;
 use std::io::Read;
 
 /// Parse a raw H3C factory volume and recover the editable fields.
+/// Auto-detects the 1 MiB compact bundle (magic `H3C-1MiB`) written by
+/// [`Factory::encode_1mib`] versus the real-layout demo image / true backup.
 pub fn parse_factory_volume(data: &[u8]) -> Factory {
+    if data.starts_with(&COMPACT_MAGIC) {
+        return parse_compact_1mib(data);
+    }
     let mut device_sn = read_device_sn(data);
 
     let almac = read_almac_bytes(data);
@@ -40,6 +45,32 @@ pub fn parse_factory_volume(data: &[u8]) -> Factory {
         calibration,
         wifi_eeprom,
     }
+}
+
+/// Parse the 1 MiB compact bundle written by `Factory::encode_1mib`.
+fn parse_compact_1mib(data: &[u8]) -> Factory {
+    let label_mac = read_mac6(data, C_LABEL_MAC_OFFSET).unwrap_or([0u8; 6]);
+    let mut device_sn = String::new();
+    if let Some(raw) = data.get(C_DEVICE_SN_OFFSET..C_DEVICE_SN_OFFSET + DEVICE_SN_SIZE) {
+        device_sn = String::from_utf8_lossy(raw)
+            .trim_matches(|c| c == '\0' || c == ' ' || c == '\u{fffd}')
+            .to_string();
+    }
+    let calibration = read_region(data, C_CALIBRATION_OFFSET, CALIBRATION_SIZE);
+    let wifi_eeprom = read_region(data, C_WIFI_EEPROM_OFFSET, WIFI_EEPROM_SIZE);
+    Factory {
+        device_sn,
+        label_mac,
+        calibration,
+        wifi_eeprom,
+    }
+}
+
+fn read_mac6(data: &[u8], off: usize) -> Option<[u8; 6]> {
+    let m = data.get(off..off + 6)?;
+    let mut a = [0u8; 6];
+    a.copy_from_slice(m);
+    Some(a)
 }
 
 /// The AL-MAC region contents: the *inflated* gzip ctromfile for a real backup,

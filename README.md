@@ -45,15 +45,18 @@ cargo build --release
 cargo run --release
 ```
 
-界面：编辑 Device SN / label MAC → 实时显示派生 MAC → 载入校准 / EEPROM bin → 导入真实 factory 卷 → 保存布局映射镜像。
+界面：编辑 Device SN / label MAC → 实时显示派生 MAC → 载入校准 / EEPROM bin → 导入真实 factory 卷 → 保存 1MiB 紧凑镜像或真实布局镜像。
 
 ## Python 伴生工具（无需 Rust）
 
 `h3c_factory_demo.py` 是命令行版，逻辑与 `src/model.rs::encode()` 完全一致：
 
 ```bash
-# 生成演示镜像
-python3 h3c_factory_demo.py gen --sn H3CT0005EBF0 --mac 44:76:09:65:06:4a -o factory-h3c-demo.bin
+# 生成 1 MiB 紧凑镜像（默认）
+python3 h3c_factory_demo.py gen --sn H3CT0005EBF0 --mac 44:76:09:65:06:4a -o factory-h3c-1mib.bin
+
+# 生成真实偏移布局镜像（~1.75 MiB）
+python3 h3c_factory_demo.py gen --layout true --sn H3CT0005EBF0 --mac 44:76:09:65:06:4a -o factory-h3c-layout.bin
 
 # 从真实 reservearea 备份解析
 python3 h3c_factory_demo.py parse --bin mtd14_reservearea.bin
@@ -61,8 +64,26 @@ python3 h3c_factory_demo.py parse --bin mtd14_reservearea.bin
 
 示例产物见 [`examples/factory-h3c-demo.bin`](examples/factory-h3c-demo.bin)。
 
-> 导出镜像固定为 **1,839,104 字节**（`0x1c1000`，≈1.75 MiB），这是容纳真实字段的最小尺寸。
-> **无法压缩到 1 MiB**：H3C 的身份字段（魔数 / SN / base-MAC @ `0x140000+`、PON 校准 @ `0x1c0400`）全部落在 1 MiB 之后，硬截断会丢失 SN、MAC、魔数与校准。
+工具支持两种导出格式（解析时按 magic 自动识别）：
+
+**1. 1 MiB 紧凑镜像（默认）** — 1,048,576 字节。真实 H3C 字段位于 `0x140000+`（超出 1 MiB），无法按真实偏移塞进 1 MiB，故采用自描述紧凑布局（magic `H3C-1MiB`），**所有字段全部保留**：
+
+| 偏移 | 长度 | 字段 |
+|------|------|------|
+| `0x0000` | 8 | magic `H3C-1MiB` |
+| `0x0010` | 6 | label MAC |
+| `0x0020` | 6 | eth0 = label+1 |
+| `0x0030` | 6 | pon0/wan = label+2 |
+| `0x0040` | 6 | 5G = label+4 |
+| `0x0050` | 6 | 2.4G = label+5 |
+| `0x0060` | 12 | Device SN (ASCII) |
+| `0x1000` | 0x1000 | Wi-Fi EEPROM (MT7916) |
+| `0x2000` | 0x200 | PON 校准 (EN7572) |
+| 其余 | — | `0xFF` 填充 |
+
+**2. 真实偏移布局镜像** — 1,839,104 字节（`0x1c1000`），字段落在与真机 factory 卷一致的偏移上，适合严格对照。
+
+两种都**不可直接刷写 NAND**（不含 UBI 元数据、不重压缩 ctromfile）。
 
 ## 目录结构
 
